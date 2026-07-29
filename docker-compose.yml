@@ -1,0 +1,18 @@
+version: "3.9"
+services:
+  short-video-maker:
+    build:
+      context: .
+      dockerfile: Dockerfile.ultra
+    image: short-video-maker:ultra
+    restart: unless-stopped
+    ports:
+      - "3123:3123"
+    environment:
+      - PEXELS_API_KEY=${PEXELS_API_KEY}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - SUPABASE_BUCKET=videos
+      - KOKORO_API_URL=https://kokoro-tts-tfeq.onrender.com
+      - KOKORO_VOICE=af_heart
+      - LOG_LEVEL=info
