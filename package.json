@@ -1,7 +1,7 @@
 {
   "name": "short-video-maker",
   "version": "2.0.0",
-  "description": "Creates short videos for TikTok, Instagram Reels, and YouTube Shorts. Slim build: external Kokoro TTS, FFmpeg compositing, Supabase storage.",
+  "description": "Creates short videos. Slim build: external Kokoro TTS, FFmpeg compositing, Supabase storage.",
   "main": "index.js",
   "scripts": {
     "build": "rimraf dist && tsc --project tsconfig.build.json",
@@ -15,8 +15,9 @@
     "short-video-maker": "dist/index.js"
   },
   "files": ["dist", "static"],
-  "author": "David Gyori",
-  "license": "MIT",
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.9.0",
     "@supabase/supabase-js": "^2.45.0",
