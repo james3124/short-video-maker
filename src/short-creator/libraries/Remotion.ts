@@ -234,8 +234,8 @@ function runFFmpeg(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const proc = spawn("ffmpeg", ["-y", ...args], { stdio: "pipe" });
     let stderr = "";
-    proc.stderr.on("data", (d) => { stderr += d.toString(); });
-    proc.on("close", (code) => {
+    proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
+    proc.on("close", (code: number | null) => {
       if (code === 0) resolve();
       else {
         logger.error({ stderr: stderr.slice(-3000) }, "ffmpeg failed");
@@ -245,4 +245,3 @@ function runFFmpeg(args: string[]): Promise<void> {
     proc.on("error", reject);
   });
 }
-  

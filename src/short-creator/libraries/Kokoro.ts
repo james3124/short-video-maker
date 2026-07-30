@@ -68,8 +68,8 @@ function probeDuration(filePath: string): Promise<number> {
       filePath,
     ]);
     let out = "";
-    proc.stdout.on("data", (d) => { out += d.toString(); });
-    proc.on("close", (code) => {
+    proc.stdout.on("data", (d: Buffer) => { out += d.toString(); });
+    proc.on("close", (code: number | null) => {
       const dur = parseFloat(out.trim());
       if (code === 0 && !isNaN(dur)) resolve(dur);
       else reject(new Error(`ffprobe failed (code ${code}) on ${filePath}`));

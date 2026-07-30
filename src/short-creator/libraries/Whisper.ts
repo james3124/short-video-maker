@@ -73,8 +73,8 @@ export class Whisper {
     await new Promise<void>((resolve, reject) => {
       const proc = spawn(this.binaryPath, args, { stdio: "pipe" });
       let stderr = "";
-      proc.stderr.on("data", (d) => { stderr += d.toString(); });
-      proc.on("close", (code) => {
+      proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
+      proc.on("close", (code: number | null) => {
         if (code === 0) resolve();
         else reject(new Error(`whisper exited ${code}: ${stderr.slice(-500)}`));
       });
