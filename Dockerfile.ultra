@@ -27,15 +27,15 @@ ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN corepack enable
 
 WORKDIR /app
-COPY package.json pnpm-lock.yaml ./
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --prod --frozen-lockfile
+COPY package.json pnpm-lock.yaml* ./
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --prod --no-frozen-lockfile
 
 # ─── Stage 3: Build TypeScript ────────────────────────────────────────────────
 FROM prod-deps AS build
 
 COPY tsconfig.json tsconfig.build.json ./
 COPY src ./src
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --no-frozen-lockfile
 RUN pnpm build
 
 # ─── Stage 4: Final slim runtime image ────────────────────────────────────────
@@ -85,7 +85,7 @@ ENV SUPABASE_URL=
 ENV SUPABASE_SERVICE_KEY=
 ENV SUPABASE_BUCKET=videos
 
-ENV NODE_OPTIONS=--max-old-space-size=512
+ENV NODE_OPTIONS=--max-old-space-size=200
 
 EXPOSE 3123
 CMD ["pnpm", "start"]
