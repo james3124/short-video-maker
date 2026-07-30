@@ -93,7 +93,8 @@ export class Remotion {
         "-map", "[v]",
         "-map", "1:a",
         "-t", String(duration),
-        "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+        "-threads", "1",
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "26",
         "-c:a", "aac", "-b:a", "128k",
         "-movflags", "+faststart",
         clipPath,
@@ -244,3 +245,4 @@ function runFFmpeg(args: string[]): Promise<void> {
     proc.on("error", reject);
   });
 }
+  
