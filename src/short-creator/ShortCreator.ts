@@ -100,7 +100,7 @@ export class ShortCreator {
     logger.debug({ inputScenes, config }, "Creating short video");
     const scenes: Scene[] = [];
     let totalDuration = 0;
-    const excludeVideoIds: number[] = [];
+    const excludeVideoIds: string[] = [];
     const tempFiles: string[] = [];
 
     const orientation: OrientationEnum = config.orientation || OrientationEnum.portrait;
@@ -159,7 +159,7 @@ export class ShortCreator {
           });
       });
 
-      excludeVideoIds.push(video.id);
+      excludeVideoIds.push(String(video.id));
 
       scenes.push({
         captions,
