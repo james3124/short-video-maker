@@ -37,7 +37,7 @@ export class MCPRouter {
         videoId: z.string().describe("The ID of the video"),
       },
       async ({ videoId }) => {
-        const status = this.shortCreator.status(videoId);
+        const status = await this.shortCreator.status(videoId);
         return {
           content: [
             {
