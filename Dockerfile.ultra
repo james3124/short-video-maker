@@ -35,7 +35,7 @@ FROM prod-deps AS build
 
 COPY tsconfig.json tsconfig.build.json ./
 COPY src ./src
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --no-frozen-lockfile
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --no-frozen-lockfile --ignore-scripts
 RUN pnpm build
 
 # ─── Stage 4: Final slim runtime image ────────────────────────────────────────
