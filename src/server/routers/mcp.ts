@@ -17,9 +17,10 @@ export class MCPRouter {
     this.shortCreator = shortCreator;
 
     this.mcpServer = new McpServer({
-  name: "Short Creator",
-  version: "0.0.1",  // ✅ capabilities auto-detected from registered tools
-});
+      name: "Short Creator",
+      version: "0.0.1",
+    });
+
     this.setupMCPServer();
     this.setupRoutes();
   }
