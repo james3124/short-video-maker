@@ -37,15 +37,8 @@ FROM node:22-bookworm-slim AS build
 RUN npm install -g typescript rimraf --no-fund --no-audit
 
 WORKDIR /app
-# Copy prod node_modules first
+# @types/* are in prod deps (see package.json) — no separate install needed
 COPY --from=prod-deps /app/node_modules ./node_modules
-# Install @types directly into node_modules using npm (no package.json needed)
-RUN npm install --no-save --no-fund --no-audit --ignore-scripts \
-    @types/node@22 \
-    @types/fs-extra@11 \
-    @types/express@4 \
-    @types/fluent-ffmpeg@2 \
-    @types/content-type@1
 COPY package.json tsconfig.json tsconfig.build.json ./
 COPY src ./src
 RUN tsc --project tsconfig.build.json
