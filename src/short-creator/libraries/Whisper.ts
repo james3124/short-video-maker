@@ -70,13 +70,19 @@ export class Whisper {
       "--no-prints",
     ];
 
+    // Verify audio file is not empty before running whisper
+    const audioStat = fs.statSync(audioPath);
+    if (audioStat.size < 1000) {
+      throw new Error(`Audio file too small for transcription: ${audioStat.size} bytes at ${audioPath}`);
+    }
+
     await new Promise<void>((resolve, reject) => {
       const proc = spawn(this.binaryPath, args, { stdio: "pipe" });
       let stderr = "";
       proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
-      proc.on("close", (code: number | null) => {
+      proc.on("close", (code: number | null, signal: string | null) => {
         if (code === 0) resolve();
-        else reject(new Error(`whisper exited ${code}: ${stderr.slice(-500)}`));
+        else reject(new Error(`whisper exited ${code} signal=${signal}: ${stderr.slice(-800)}`));
       });
       proc.on("error", reject);
     });
