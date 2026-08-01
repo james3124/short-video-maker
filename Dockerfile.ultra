@@ -13,7 +13,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /whisper
 RUN git clone https://github.com/ggml-org/whisper.cpp.git . && git checkout v1.7.1
-RUN make -j$(nproc)
+RUN make -j$(nproc) \
+    CFLAGS="-O2 -fPIC -pthread" \
+    CXXFLAGS="-O2 -fPIC -pthread" \
+    CXXFLAGS_EXTRA="" \
+    CFLAGS_EXTRA="" \
+    MK_CFLAGS="-O2 -fPIC -pthread" \
+    MK_CXXFLAGS="-O2 -fPIC -pthread" 
 WORKDIR /whisper/models
 RUN sh ./download-ggml-model.sh tiny.en
 
