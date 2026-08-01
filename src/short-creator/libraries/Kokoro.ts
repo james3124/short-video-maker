@@ -6,11 +6,10 @@ import { VoiceEnum, type Voices } from "../../types/shorts";
 import { logger } from "../../logger";
 
 const KOKORO_API_URL = (
-  process.env.KOKORO_API_URL ?? "https://kokoro-tts-tfeq.onrender.com"
+  process.env.KOKORO_API_URL ?? "https://kokoro-tts-onnx.vercel.app"
 ).replace(/\/$/, "");
 
 export class Kokoro {
-  // Static init kept for drop-in compatibility with index.ts
   static async init(_precision?: string): Promise<Kokoro> {
     logger.info({ url: KOKORO_API_URL }, "Kokoro: using external TTS API");
     return new Kokoro();
@@ -30,8 +29,7 @@ export class Kokoro {
       split_pattern: "\\n+",
     };
 
-    // Check server is up (ok:true), then send TTS directly.
-    // model_loaded:false is normal with lazy loading — model loads on first TTS call.
+    // Quick health check — confirm server is up
     try {
       const healthRes = await axios.get(`${KOKORO_API_URL}/health`, { timeout: 15_000 });
       logger.info({ health: healthRes.data }, "Kokoro server is up");
@@ -39,13 +37,14 @@ export class Kokoro {
       logger.warn("Kokoro health check failed — attempting TTS anyway");
     }
 
-    // Send TTS with retries (model loads on first request, may take a few seconds)
-    let response: any = null;
+    // Send TTS with retries (model loads lazily on first request)
+    let ttsResponse: any = null;
     const maxRetries = 5;
     const retryWaits = [5_000, 10_000, 15_000, 20_000, 30_000];
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        response = await axios.post(`${KOKORO_API_URL}/tts`, payload, {
+        ttsResponse = await axios.post(`${KOKORO_API_URL}/tts`, payload, {
           responseType: "arraybuffer",
           timeout: 120_000,
           headers: { "Content-Type": "application/json" },
@@ -64,44 +63,43 @@ export class Kokoro {
       }
     }
 
-    if (!response) throw new Error("Kokoro TTS failed after all retries");
+    if (!ttsResponse) throw new Error("Kokoro TTS failed after all retries");
 
-    // Vercel Kokoro returns a Supabase URL (JSON or plain text), not raw bytes.
-    // Render/local Kokoro returns raw audio bytes.
-    // Detect which format and handle both.
-    const contentType = response.headers?.["content-type"] ?? "";
-    let audioBuffer: ArrayBuffer;
+    // Vercel Kokoro may return a URL (JSON/text) instead of raw audio bytes
+    const contentType: string = ttsResponse.headers?.["content-type"] ?? "";
+    let audioBytes: Buffer;
 
     if (contentType.includes("application/json") || contentType.includes("text/plain")) {
-      // Response is JSON or text — parse to get the URL
-      const text = Buffer.from(response.data).toString("utf-8").trim();
+      const text2 = Buffer.from(ttsResponse.data as ArrayBuffer).toString("utf-8").trim();
       let audioUrl: string;
       try {
-        const parsed = JSON.parse(text);
-        audioUrl = parsed.audio_url ?? parsed.url ?? parsed.file_url ?? text;
+        const parsed = JSON.parse(text2);
+        audioUrl = parsed.audio_url ?? parsed.url ?? parsed.file_url ?? text2;
       } catch {
-        audioUrl = text; // plain text URL
+        audioUrl = text2;
       }
       logger.debug({ audioUrl }, "Kokoro returned URL, downloading audio");
-      const dlRes = await axios.get(audioUrl, { responseType: "arraybuffer", timeout: 60_000 });
-      audioBuffer = Buffer.from(dlRes.data);
+      const dlRes = await axios.get(audioUrl, {
+        responseType: "arraybuffer",
+        timeout: 60_000,
+      });
+      audioBytes = Buffer.from(dlRes.data as ArrayBuffer);
     } else {
-      // Raw audio bytes
-      audioBuffer = Buffer.from(response.data);
+      audioBytes = Buffer.from(ttsResponse.data as ArrayBuffer);
     }
 
-    // Write to temp file to probe duration
+    // Write to temp file to probe duration via ffprobe
     const tmpPath = path.join(
       process.env.DATA_DIR_PATH ?? "/tmp",
       `kokoro_tmp_${Date.now()}.wav`,
     );
-    await fs.outputFile(tmpPath, audioBuffer);
-
+    await fs.outputFile(tmpPath, audioBytes);
     const audioLength = await probeDuration(tmpPath);
     await fs.remove(tmpPath);
 
     logger.debug({ voice, audioLength }, "Kokoro TTS complete");
-    return { audio: audioBuffer, audioLength };
+    // Return as ArrayBuffer for compatibility with existing FFmpeg pipeline
+    return { audio: audioBytes.buffer as ArrayBuffer, audioLength };
   }
 
   listAvailableVoices(): Voices[] {
