@@ -30,16 +30,19 @@ export class Kokoro {
       split_pattern: "\\n+",
     };
 
-    // Wake up Kokoro first (free tier cold start can take 50+ seconds)
-    // Send a cheap GET request to trigger the spin-up before the heavy TTS call
-    logger.debug("Pinging Kokoro to wake it up...");
-    await axios.get(`${KOKORO_API_URL}/health`, { timeout: 90_000 }).catch(() => {});
-    logger.debug("Kokoro ping done, sending TTS request");
+    // Check server is up (ok:true), then send TTS directly.
+    // model_loaded:false is normal with lazy loading — model loads on first TTS call.
+    try {
+      const healthRes = await axios.get(`${KOKORO_API_URL}/health`, { timeout: 15_000 });
+      logger.info({ health: healthRes.data }, "Kokoro server is up");
+    } catch {
+      logger.warn("Kokoro health check failed — attempting TTS anyway");
+    }
 
-    // Retry up to 6 times with increasing waits (total ~2.5 min budget)
+    // Send TTS with retries (model loads on first request, may take a few seconds)
     let response: any = null;
-    const maxRetries = 6;
-    const retryWaits = [5_000, 10_000, 15_000, 20_000, 25_000, 30_000];
+    const maxRetries = 5;
+    const retryWaits = [5_000, 10_000, 15_000, 20_000, 30_000];
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         response = await axios.post(`${KOKORO_API_URL}/tts`, payload, {
@@ -53,7 +56,7 @@ export class Kokoro {
         const isRetryable = !status || status === 502 || status === 503 || status === 504;
         if (isRetryable && attempt < maxRetries) {
           const wait = retryWaits[attempt - 1];
-          logger.warn({ attempt, status, wait }, "Kokoro cold start, retrying...");
+          logger.warn({ attempt, status, wait }, "Kokoro TTS failed, retrying...");
           await new Promise((r) => setTimeout(r, wait));
         } else {
           throw err;
