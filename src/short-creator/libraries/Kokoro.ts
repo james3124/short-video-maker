@@ -65,14 +65,37 @@ export class Kokoro {
     }
 
     if (!response) throw new Error("Kokoro TTS failed after all retries");
-    const audioBuffer: ArrayBuffer = response.data;
+
+    // Vercel Kokoro returns a Supabase URL (JSON or plain text), not raw bytes.
+    // Render/local Kokoro returns raw audio bytes.
+    // Detect which format and handle both.
+    const contentType = response.headers?.["content-type"] ?? "";
+    let audioBuffer: Buffer;
+
+    if (contentType.includes("application/json") || contentType.includes("text/plain")) {
+      // Response is JSON or text — parse to get the URL
+      const text = Buffer.from(response.data).toString("utf-8").trim();
+      let audioUrl: string;
+      try {
+        const parsed = JSON.parse(text);
+        audioUrl = parsed.audio_url ?? parsed.url ?? parsed.file_url ?? text;
+      } catch {
+        audioUrl = text; // plain text URL
+      }
+      logger.debug({ audioUrl }, "Kokoro returned URL, downloading audio");
+      const dlRes = await axios.get(audioUrl, { responseType: "arraybuffer", timeout: 60_000 });
+      audioBuffer = Buffer.from(dlRes.data);
+    } else {
+      // Raw audio bytes
+      audioBuffer = Buffer.from(response.data);
+    }
 
     // Write to temp file to probe duration
     const tmpPath = path.join(
       process.env.DATA_DIR_PATH ?? "/tmp",
       `kokoro_tmp_${Date.now()}.wav`,
     );
-    await fs.outputFile(tmpPath, Buffer.from(audioBuffer));
+    await fs.outputFile(tmpPath, audioBuffer);
 
     const audioLength = await probeDuration(tmpPath);
     await fs.remove(tmpPath);
