@@ -33,7 +33,7 @@ export class Kokoro {
     // Wake up Kokoro first (free tier cold start can take 50+ seconds)
     // Send a cheap GET request to trigger the spin-up before the heavy TTS call
     logger.debug("Pinging Kokoro to wake it up...");
-    await axios.get(`${KOKORO_API_URL}/docs`, { timeout: 90_000 }).catch(() => {});
+    await axios.get(`${KOKORO_API_URL}/health`, { timeout: 90_000 }).catch(() => {});
     logger.debug("Kokoro ping done, sending TTS request");
 
     // Retry up to 6 times with increasing waits (total ~2.5 min budget)
