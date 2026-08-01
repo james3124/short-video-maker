@@ -30,9 +30,16 @@ export class Kokoro {
       split_pattern: "\\n+",
     };
 
-    // Retry up to 4 times — handles Render free tier cold starts (502/503)
+    // Wake up Kokoro first (free tier cold start can take 50+ seconds)
+    // Send a cheap GET request to trigger the spin-up before the heavy TTS call
+    logger.debug("Pinging Kokoro to wake it up...");
+    await axios.get(`${KOKORO_API_URL}/docs`, { timeout: 90_000 }).catch(() => {});
+    logger.debug("Kokoro ping done, sending TTS request");
+
+    // Retry up to 6 times with increasing waits (total ~2.5 min budget)
     let response: any = null;
-    const maxRetries = 4;
+    const maxRetries = 6;
+    const retryWaits = [5_000, 10_000, 15_000, 20_000, 25_000, 30_000];
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         response = await axios.post(`${KOKORO_API_URL}/tts`, payload, {
@@ -45,7 +52,7 @@ export class Kokoro {
         const status = err?.response?.status;
         const isRetryable = !status || status === 502 || status === 503 || status === 504;
         if (isRetryable && attempt < maxRetries) {
-          const wait = attempt * 8_000;
+          const wait = retryWaits[attempt - 1];
           logger.warn({ attempt, status, wait }, "Kokoro cold start, retrying...");
           await new Promise((r) => setTimeout(r, wait));
         } else {
