@@ -22,22 +22,39 @@ export class Kokoro {
   ): Promise<{ audio: ArrayBuffer; audioLength: number }> {
     logger.debug({ voice, textLength: text.length }, "Calling external Kokoro TTS");
 
-    const response = await axios.post(
-      `${KOKORO_API_URL}/tts`,
-      {
-        text,
-        voice,
-        speed: Number(process.env.KOKORO_SPEED ?? 1),
-        lang_code: process.env.KOKORO_LANG_CODE ?? "a",
-        split_pattern: "\\n+",
-      },
-      {
-        responseType: "arraybuffer",
-        timeout: 120_000,
-        headers: { "Content-Type": "application/json" },
-      },
-    );
+    const payload = {
+      text,
+      voice,
+      speed: Number(process.env.KOKORO_SPEED ?? 1),
+      lang_code: process.env.KOKORO_LANG_CODE ?? "a",
+      split_pattern: "\\n+",
+    };
 
+    // Retry up to 4 times — handles Render free tier cold starts (502/503)
+    let response: any = null;
+    const maxRetries = 4;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        response = await axios.post(`${KOKORO_API_URL}/tts`, payload, {
+          responseType: "arraybuffer",
+          timeout: 120_000,
+          headers: { "Content-Type": "application/json" },
+        });
+        break;
+      } catch (err: any) {
+        const status = err?.response?.status;
+        const isRetryable = !status || status === 502 || status === 503 || status === 504;
+        if (isRetryable && attempt < maxRetries) {
+          const wait = attempt * 8_000;
+          logger.warn({ attempt, status, wait }, "Kokoro cold start, retrying...");
+          await new Promise((r) => setTimeout(r, wait));
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    if (!response) throw new Error("Kokoro TTS failed after all retries");
     const audioBuffer: ArrayBuffer = response.data;
 
     // Write to temp file to probe duration
