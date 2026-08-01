@@ -191,11 +191,16 @@ function escapePath(p: string): string {
 }
 
 function writeSRT(captions: Caption[], srtPath: string): void {
+  if (!captions || captions.length === 0) {
+    // Write a single invisible placeholder so libass doesn't fail
+    fs.writeFileSync(srtPath, "1\n00:00:00,000 --> 00:00:00,001\n \n\n", "utf-8");
+    return;
+  }
   let out = "";
   captions.forEach((c, i) => {
     out += `${i + 1}\n`;
     out += `${msToSRTTime(c.startMs)} --> ${msToSRTTime(c.endMs)}\n`;
-    out += `${c.text.trim()}\n\n`;
+    out += `${c.text.trim() || " "}\n\n`;
   });
   fs.writeFileSync(srtPath, out, "utf-8");
 }
