@@ -70,7 +70,7 @@ export class Kokoro {
     // Render/local Kokoro returns raw audio bytes.
     // Detect which format and handle both.
     const contentType = response.headers?.["content-type"] ?? "";
-    let audioBuffer: Buffer;
+    let audioBuffer: ArrayBuffer;
 
     if (contentType.includes("application/json") || contentType.includes("text/plain")) {
       // Response is JSON or text — parse to get the URL
