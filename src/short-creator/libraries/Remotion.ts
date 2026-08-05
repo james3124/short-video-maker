@@ -53,6 +53,7 @@ export class Remotion {
 
     // ── Render each scene to a clip ──────────────────────────────────────────
     const clipPaths: string[] = [];
+    const clipDurations: number[] = [];
 
     for (let i = 0; i < scenes.length; i++) {
       const scene = scenes[i];
@@ -89,9 +90,12 @@ export class Remotion {
         "-i", audioPath,
         "-filter_complex",
           `[0:v]scale=${w}:${h}:force_original_aspect_ratio=increase,` +
-          `crop=${w}:${h},setsar=1,${subtitleFilter}[v]`,
+          `crop=${w}:${h},setsar=1,${subtitleFilter}[v];` +
+          // Pad audio with silence to fill the full clip duration
+          // so there's no dead air when paddingBack extends beyond speech
+          `[1:a]apad=pad_dur=${duration}[a]`,
         "-map", "[v]",
-        "-map", "1:a",
+        "-map", "[a]",
         "-t", String(duration),
         "-threads", "1",
         "-c:v", "libx264", "-preset", "ultrafast", "-crf", "26",
@@ -101,39 +105,31 @@ export class Remotion {
       ]);
 
       clipPaths.push(clipPath);
+      clipDurations.push(duration);
       fs.removeSync(srtPath);
-      logger.debug({ i, clipPath }, "Scene clip done");
+      logger.debug({ i, clipPath, duration }, "Scene clip done");
     }
 
-    // ── Concat all clips ──────────────────────────────────────────────────────
-    const concatList = path.join(tempDir, `${id}_concat.txt`);
-    fs.writeFileSync(
-      concatList,
-      clipPaths.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join("\n"),
-    );
-
+    // ── Concat all clips with xfade transitions ─────────────────────────────
     const musicVol = MUSIC_VOLUME[renderConfig.musicVolume ?? "high"] ?? 0.25;
     const musicFilePath = music?.file ? path.join(this.config.musicDirPath, music.file) : null;
     const hasMusicFile = musicFilePath && fs.existsSync(musicFilePath);
 
-    if (!hasMusicFile || musicVol === 0) {
-      // No music — just concat
-      await runFFmpeg([
-        "-f", "concat", "-safe", "0", "-i", concatList,
-        "-c", "copy",
-        outputPath,
-      ]);
-    } else {
-      // Concat to intermediate then mix music
-      const concatPath = path.join(tempDir, `${id}_concat.mp4`);
-      await runFFmpeg([
-        "-f", "concat", "-safe", "0", "-i", concatList,
-        "-c", "copy",
-        concatPath,
-      ]);
+    const joinedPath = path.join(tempDir, `${id}_joined.mp4`);
 
+    if (clipPaths.length === 1) {
+      // Single scene — no concat needed
+      fs.copySync(clipPaths[0], joinedPath);
+    } else {
+      // Multi-scene — use xfade for smooth transitions (no freeze frames)
+      await concatWithXfade(clipPaths, clipDurations, joinedPath);
+    }
+
+    if (!hasMusicFile || musicVol === 0) {
+      fs.moveSync(joinedPath, outputPath, { overwrite: true });
+    } else {
       await runFFmpeg([
-        "-i", concatPath,
+        "-i", joinedPath,
         "-stream_loop", "-1", "-i", musicFilePath!,
         "-filter_complex",
           `[1:a]volume=${musicVol}[music];` +
@@ -145,12 +141,10 @@ export class Remotion {
         "-movflags", "+faststart",
         outputPath,
       ]);
-
-      fs.removeSync(concatPath);
+      fs.removeSync(joinedPath);
     }
 
     // Cleanup
-    fs.removeSync(concatList);
     for (const clip of clipPaths) fs.removeSync(clip);
 
     logger.debug({ id, outputPath }, "FFmpeg render complete");
@@ -233,6 +227,58 @@ function cssColorToAss(color: string): string {
     return `&H00${hex.slice(4, 6)}${hex.slice(2, 4)}${hex.slice(0, 2)}`.toUpperCase();
   }
   return "&H00FF0000";
+}
+
+/**
+ * Concatenate clips with smooth xfade/acrossfade transitions between scenes.
+ * Fixes the freeze-frame stall that occurs with the concat demuxer + -c copy.
+ */
+async function concatWithXfade(
+  clipPaths: string[],
+  durations: number[],
+  outputPath: string,
+  fadeSec: number = 0.4,
+): Promise<void> {
+  const inputs = clipPaths.flatMap((p) => ["-i", p]);
+  const n = clipPaths.length;
+
+  const vFilters: string[] = [];
+  const aFilters: string[] = [];
+
+  let prevV = "0:v";
+  let prevA = "0:a";
+  let offset = durations[0] - fadeSec;
+
+  for (let i = 1; i < n; i++) {
+    const isLast = i === n - 1;
+    const vOut = isLast ? "vfinal" : `vtmp${i}`;
+    const aOut = isLast ? "afinal" : `atmp${i}`;
+
+    vFilters.push(
+      `[${prevV}][${i}:v]xfade=transition=fade:duration=${fadeSec}:offset=${offset.toFixed(3)}[${vOut}]`,
+    );
+    aFilters.push(
+      `[${prevA}][${i}:a]acrossfade=d=${fadeSec}:c1=tri:c2=tri[${aOut}]`,
+    );
+
+    prevV = vOut;
+    prevA = aOut;
+    offset += durations[i] - fadeSec;
+  }
+
+  const filterComplex = [...vFilters, ...aFilters].join(";");
+
+  await runFFmpeg([
+    ...inputs,
+    "-filter_complex", filterComplex,
+    "-map", "[vfinal]",
+    "-map", "[afinal]",
+    "-threads", "1",
+    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "26",
+    "-c:a", "aac", "-b:a", "128k",
+    "-movflags", "+faststart",
+    outputPath,
+  ]);
 }
 
 function runFFmpeg(args: string[]): Promise<void> {
